@@ -1,93 +1,93 @@
-getwd()
-setwd("D:\\Business Analytics\\Caursera\\3. Getting & Cleaning Data\\R_Code\\Assignment")
+# run_analysis.R script
 
-# Download the file and put the file in the database folder
+# DATA
 
-if(!file.exists("./database")){dir.create("./database")}
-fileUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-download.file(fileUrl,destfile="./database/Data.zip",method="curl")
+temp <- tempfile() #creates a temp empty file
 
-# Unzip the file
+download.file("https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip",temp) #downloads the zip into the temp file
 
-unzip(zipfile="./database/data.zip",exdir="./database")
+unzip(temp, exdir="./data") #unzip the data
 
-# Get the list of files which are available in the folder 'UCI HAR Dataset'
-
-path <- file.path("./database" , "UCI HAR Dataset")
-files<-list.files(path, recursive=TRUE)
-files
-
-# Read data from the files into the variables
-
-activityTest  <- read.table(file.path(path, "test" , "Y_test.txt" ),header = FALSE)
-activityTrain <- read.table(file.path(path, "train", "Y_train.txt"),header = FALSE)
-subjectTrain <- read.table(file.path(path, "train", "subject_train.txt"),header = FALSE)
-subjectTest  <- read.table(file.path(path, "test" , "subject_test.txt"),header = FALSE)
-featuresTest  <- read.table(file.path(path, "test" , "X_test.txt" ),header = FALSE)
-featuresTrain <- read.table(file.path(path, "train", "X_train.txt"),header = FALSE)
-
-# Merges the training and the test sets to create one data set
-# Concatenate the data tables by rows
-
-subject <- rbind(subjectTrain, subjectTest)
-activity<- rbind(activityTrain, activityTest)
-features<- rbind(featuresTrain, featuresTest)
-
-# set names to variables
-
-names(subject)<-c("subject")
-names(activity)<- c("activity")
-
-featuresNames <- read.table(file.path(path, "features.txt"),head=FALSE)
-names(features)<- featuresNames$V2
-
-# Merge columns to get the data frame Data for all data
-
-dataCombine <- cbind(subject, activity)
-data <- cbind(features, dataCombine)
+#Reads all data from test and train folders 
 
 
+testset <- read.table("./data/UCI HAR Dataset/test/X_test.txt")
+testlabels <- read.table("./data/UCI HAR Dataset/test/y_test.txt")
+testsubjects <- read.table("./data/UCI HAR Dataset/test/subject_test.txt")
 
-# Extracts only the measurements on the mean and standard deviation for each measurement
-# Subset Name of Features by measurements on the mean and standard deviation
-
-subfeaturesNames<-featuresNames$V2[grep("mean\\(\\)|std\\(\\)", featuresNames$V2)]
-
-# Subset the data frame Data by seleted names of Features
-selectedNames <- c(as.character(subfeaturesNames), "subject", "activity" )
-data <- subset(data,select=selectedNames)
-
-# Check the structures of the data frame Data
-str(data)
-
-# Uses descriptive activity names to name the activities in the data set
-# Read descriptive activity names from "activity_labels.txt"
-activityLabels <- read.table(file.path(path, "activity_labels.txt"),header = FALSE)
-
-# facorize Variale activity in the data frame Data using descriptive activity names & check
-head(data$activity,30)
-
-# Appropriately labels the data set with descriptive variable names
-#prefix t is replaced by time
-#Gyro is replaced by Gyroscope
-# prefix f is replaced by frequency
-# Mag is replaced by Magnitude
-# BodyBody is replaced by Body
-
-names(data)<-gsub("^t", "time", names(data))
-names(data)<-gsub("^f", "frequency", names(data))
-names(data)<-gsub("Acc", "Accelerometer", names(data))
-names(data)<-gsub("Gyro", "Gyroscope", names(data))
-names(data)<-gsub("Mag", "Magnitude", names(data))
-names(data)<-gsub("BodyBody", "Body", names(data))
-
-names(data)
-
-# Creates a second,independent tidy data set and ouput it
-Data2<-aggregate(. ~subject + activity, data, mean)
-Data2<-Data2[order(Data2$subject,Data2$activity),]
-write.table(Data2, file = "tidydata.txt",row.name=FALSE)
+trainset <- read.table("./data/UCI HAR Dataset/train/X_train.txt")
+trainlabels <- read.table("./data/UCI HAR Dataset/train/y_train.txt")
+trainsubjects <- read.table("./data/UCI HAR Dataset/train/subject_train.txt")
 
 
+## Merges the training and the test datasets to create one.
 
+alltest <- cbind(testlabels, testsubjects, testset) #binds all test datasets
+alltrain <- cbind(trainlabels, trainsubjects, trainset) #binds all train datasets
+
+traintest <- rbind(alltrain, alltest) #binds train and test
+
+features <-  read.table("./data/UCI HAR Dataset/features.txt",header = FALSE) #reads feature table
+
+colnames(traintest)[3:563] <- features [ ,2] #renames all the feature columns according to the feature data
+
+colnames(traintest)[1]<- "activityid" #renames first column
+colnames(traintest)[2]<- "subjects" #renames second column
+colnames(traintest) #checks the names of the columns
+
+
+## Extracts only the measurements on the mean and standard deviation for each measurement. 
+
+colNames <- colnames(traintest) #stores the column names to easy access
+
+colNames
+
+means <- grep ("mean()", colNames) #takes the columns with mean
+sds <- grep ("std()", colNames) # takesthe columns with sd
+
+meansd <- cbind (traintest["activityid"], traintest["subjects"],  traintest[means], traintest[sds]) #dataframe only with means and sd
+
+## Uses descriptive activity names to name the activities in the data set
+
+activityLabels <-  read.table("./data/UCI HAR Dataset/activity_labels.txt", header = FALSE, stringsAsFactors = T)
+
+colnames(activityLabels) <- c("activityid", "activitytype")
+
+activitytype <- sub("_", " ", activityLabels$activitytype) #removes underscore from the activity names
+
+activityLabels[,2] <- activitytype #replaces de activitytype column. Now the names are without underscore.
+
+descriptive <- merge(meansd, activityLabels, by = "activityid", all.x = TRUE)
+
+library(dplyr)
+
+descriptive <- select(descriptive, last_col(), everything()) #moves the last column to the first position
+
+activitytype <- strsplit(descriptive$activitytype, "_") #removes underscore from the names of the column
+
+categories <- as.factor(unique(descriptive$activitytype)) #just to check if the names ar correct
+categories
+
+
+# Appropriately labels the data set with descriptive variable names.
+
+# already named before (lines 32:38)
+
+colnames(descriptive) <- tolower(names(descriptive)) # lowercase for column names
+
+
+# From the data set in step 4, creates a second, independent tidy data set with the average
+# of each variable for each activity and each subject.
+
+
+tidy <- descriptive %>% 
+  group_by(subjects, activitytype) %>%
+  summarise_all(list(mean))
+
+tidy <- tidy[, c(3,2,1, 4:82)] # reorder the columns to look better
+
+
+#Save data 
+
+write.table(tidy, "tidydata.txt", row.name=FALSE) #saves the data
 
